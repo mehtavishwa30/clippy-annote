@@ -1,1 +1,1 @@
-# Build a YouTube Shorts generator with Pyannote & ffmpeg
+# Build a YouTube Shorts generator with Pyannote & FFmpeg
