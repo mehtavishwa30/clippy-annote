@@ -47,7 +47,7 @@ This guide will show you how to build a a command-line tool that can:
 - reframe the clip 9:16 vertical with blurred tabs
 - and burns colour-coded karaoke-style captions, one colour per speaker into the video
 
-You can view the full code for this guide {here](https://github.com/mehtavishwa30/clippy-annote).
+You can view the full code for this guide [here](https://github.com/mehtavishwa30/clippy-annote).
 
 ### Tech stack
 
