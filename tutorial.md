@@ -1,4 +1,4 @@
- ---
+---
 Title: Build a YouTube Shorts generator with Pyannote & FFmpeg
 Description: Build a CLI tool that takes a video, automatically finds the most compelling clip, reframes it to 9:16 vertical, and burns in colour-coded karaoke-style captions, one colour per speaker.
 ---
