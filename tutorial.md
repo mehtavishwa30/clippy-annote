@@ -1,4 +1,4 @@
----
+ ---
 Title: Build a YouTube Shorts generator with Pyannote & FFmpeg
 Description: Build a CLI tool that takes a video, automatically finds the most compelling clip, reframes it to 9:16 vertical, and burns in colour-coded karaoke-style captions, one colour per speaker.
 ---
@@ -7,7 +7,6 @@ Description: Build a CLI tool that takes a video, automatically finds the most c
 - Overview
 - What we are building
 - Quickstart
-- Gotchas
 - Additional Resources
 - Next Steps
 - Conclusion
@@ -189,7 +188,7 @@ def wait(job_id: str, poll_every: float = 5, timeout: float = 3600, on_poll=None
 
 Upload the video to Pyannote platform
 
-### Step 4: Write your `render.py` file
+### Step 4: Extract the audio and render the shorts clip
 
 Create a new file in your project directory called `render.py` and edit the file such that the contents are as follows:
 
@@ -242,7 +241,7 @@ def render(src: str, start: float, dur: float, ass: str, out: str) -> None:
 
 🧑‍🏫 **Understanding the key concepts in the code**
 
-### Step 5: shorts.py
+### Step 5: Write your main script `shorts.py`
 
 Create a new file in your project directory called `shorts.py` and edit the file such that the contents are as follows:
 
@@ -368,7 +367,7 @@ if __name__ == "__main__":
 
 🧑‍🏫 **Understanding the key concepts in the code**
 
-### Step 6: Style your captions
+### Step 6: Style your karaoke-style, colour-coded captions
 
 Create a new file in your project directory called `captions.py` and edit the file such that the contents are as follows:
 
@@ -636,16 +635,62 @@ def pick_clip(turns: list[dict], lo: int = 45, hi: int = 60, focus: str | None =
 
 ### Testing your CLI tool
 
-a. Sample video
+a. Pick a sample video and save it at the same root directory as the project files.
 
-b. Running the project
+b. Run the project using one of the following options provided by the CLI:
 
-c. Options
+* Use the default auto-mode to let Gemini pick the best window for the clip.
+
+  ```sh
+  python shorts.py sample.mp4 -o short.mp4   # Gemini picks the clip
+  ```
+
+* Use the manual mode to pass start and end times for the clip window.
+
+  ```sh
+  python shorts.py sample.mp4 --start 34 --end 93  -o short.mp4  # explicitly pick a viral window
+  ```
+  
+* List chapter markers. LLM analyzes the video and shows various topics/questions covered.
+
+  ```sh
+  python shorts.py sample.mp4 --chapters
+  ```
+  Your output should look something like:
+
+  ```sh
+  using cached transcript
+  asking Gemini for chapters
+  0:00  What are your agents doing today?
+  1:28  Tell us about Base 10 and how you got there.
+  4:25  How much responsibility can agents handle?
+  5:55  How do you set up your agent harness?
+  9:25  Using different models and inter-agent communication
+  17:52  What can agents do in ML research, and what is the human role?
+  24:26  The future of context windows and KV cache compaction
+  27:44  Where do you see AI going in the next few years?
+  37:32  The importance of UI/UX, automation, and agent autonomy
+  41:37  Conclusion
+  ```
+
+* Pick a window based on a specific chapter.
+
+  ```sh
+  python shorts.py sample.mp4 --topic "How do you set up your agent harness?" -o short.mp4
+  ```
 
 ## Additional Resources
 
 - [Pyannote Docs](https://docs.pyannote.ai/introduction)
+- [FFmpeg docs](https://www.ffmpeg.org/documentation.html)
+- [Pyannote speaker diarization toolkit](https://github.com/pyannote/pyannote-audio)
 
 ## Next Steps
 
+Awesome. Now that you've learned how to build a CLI tool to generate YouTube shorts using Pyannote and FFmpeg, you can:
+- Turn it into a Streamlit/Gradio app for a cleaner UI/UX interface for non-technical users
+- Add more tools on top of the speaker intelligence such as: RAG to ask questions, AI note-taker that shares/stores a summary of the insights in Notion, etc.
+
 ## Conclusion
+
+Speaker diarization is just one piece in the speaker intelligence puzzel and we're excited to see what is possible!
