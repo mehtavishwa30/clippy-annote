@@ -56,10 +56,38 @@ You can view the full code for this guide [here](https://github.com/mehtavishwa3
 
 ### Architecture
 
-```
-[Input Video]    ➡️   [Extract Audio]   ➡️   [Pyannote: Who Spoke When]
-                                                         ⬇️
-[Render Color-Coded Video] ⬅️ [Map Timestamps] ⬅️ [Whisper: What Was Said]
+```text
+          talk.mp4
+             │
+        ┌────▼─────┐
+        │ shorts.py│  (CLI orchestrator)
+        └────┬─────┘
+             │
+     cached? ├──  yes ───────────────┐
+             │ no                    │
+ffmpeg → 16kHz mono mp3 [LOCAL]      │
+             │                       │
+pyannote.ai: precision-2 +           │
+ faster-whisper-large-v3 [CLOUD]     │
+             │                       │
+             └──────► transcript.json ◄──────┐  (turn + word level, cached)
+                          │
+              ┌───────────┼─────────────────┐
+       --chapters     auto / --topic     --start/--end
+              │            │                 │
+      chapters.make_   highlight.pick_    explicit
+      chapters         clip  [CLOUD]       window
+      [CLOUD]             │                 │
+         │                └───────┬─────────┘
+   print chapters            clip window
+   (exit)                         │
+                        captions.build_ass  [LOCAL]
+                        (per-speaker karaoke .ass)
+                                  │
+                        render.render  [LOCAL]
+                        (9:16 reframe + burn captions)
+                                  │
+                              short.mp4
 ```
 
 ## 📝 Quickstart
