@@ -2,6 +2,18 @@
 
 clippy-annote is a CLI tool written in Python that allows you create beautiful YouTube Shorts with colour-coded captions per speaker.
 
+## Whos is this for
+
+clippy-annote is a demo that showcases the power of diarization in building speaker-intelligent systems to developers. The CLI tool helps dev educators, who record and publish long form content on social media, upload a raw recording and turn it into a beautiful highlight clip with karaoke-style, speaker-aware captions.
+
+## Why this matters
+
+Captions in multi-speaker, long form content get garbled due to cross-talk, overlap, regional dialects, etc. Pulling insights simply based on words relies on STT solutions that turn speech to text. This misses out on the core essence of a voice. It tell us "what is being said" and not "who spoke when".
+
+clippy-annote generates captions that are based on the foundation of speaker diarization that combines "what is being said" with "who spoke when" to show us "who said what and when".
+
+Instead of overlaying a dump of flat text from transcription, the CLI tool renders captions that are colour-coded per speaker and highlights each word exactly as it is being spoken by the voice.
+
 ## Setup
 
 ```sh
