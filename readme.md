@@ -52,18 +52,13 @@ clippy-annote CLI provides various options to steer the generation of your YouTu
   python shorts.py sample.mp4 --topic "How do agents interact securely across users?" -o short.mp4
   ```
 
-## How it works
+## Project reference
 
-| Step | File |
+| File | Purpose |
 | --- | --- |
-| 16 kHz mono audio for upload | `render.py` |
-| `precision-2` diarization + `faster-whisper-large-v3-turbo` transcription | `pyannote_client.py` |
-| Topical / Q&A chapters | `chapters.py` |
-| Pick the clip window (auto, `--topic`, guaranteed multi-speaker) | `highlight.py` |
-| Word-level karaoke `.ass`, one colour per speaker | `captions.py` |
-| Cut → blurred 9:16 reframe → burn captions | `render.py` |
-
-The clip picker always returns a multi-speaker exchange: if Gemini's pick is
-single-speaker it is re-asked once, then falls back to the densest exchange in
-the transcript. pyannote.ai only offers transcription with `precision-2`, so
-that one job covers both diarization and the word timings the captions need.
+| `shorts.py` | The CLI orchestrator |
+| `pyannote_client.py` | The transcription API client |
+| `render.py` | ffmpeg steps |
+| `highlight.py` | Clip selection using Gemini |
+| `chapters.py` | Topic segmentation |
+| `captions.py` | Caption generation |
