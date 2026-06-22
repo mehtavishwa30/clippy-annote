@@ -6,7 +6,7 @@ Description: Build a CLI tool that takes a video, automatically finds the most c
 ## Table of contents
 - Overview
 - What we are building
-- Quickstart
+- Reference Guide
 - Additional Resources
 - Next Steps
 - Conclusion
@@ -30,6 +30,8 @@ By adding a speaker intelligence layer underneath the transcription that serves 
 **Why this matters 🪄**
 
 A plain transcript answers "what was said." A diarized transcript answers "who said what, and when." That distinction unlocks:
+* Speaker-aware transcriptions
+* Insights hidden away in long recordings
 
 | Without diarization | With diarization |
 |---|---|
@@ -37,9 +39,13 @@ A plain transcript answers "what was said." A diarized transcript answers "who s
 | No attribution | Every answer cites the speaker |
 | Opaque Q&A | Grounded, timestamped citations |
 
+**Who this is for**
+
+Developers and developer relations professionaly who record and publish long-form educational video content on socials such as podcasts, fireside chats, panels and interviews at conferences, community calls, etc. This CLI tool helps them upload the raw file and turn it into a beautiful highlight clip with speaker-aware captions.
+
 ## 🚧 What we are building
 
-This guide will show you how to build a a command-line tool that can:
+This guide will show you how to build a command-line tool that can:
 - take a .mp4/wav video as input
 - automatically finds the most compelling clip using AI
 - generate captions based on diarized transcripts
@@ -57,7 +63,7 @@ You can view the full code for this guide [here](https://github.com/mehtavishwa3
 ### Architecture
 
 ```text
-          talk.mp4
+         sample.mp4
              │
         ┌────▼─────┐
         │ shorts.py│  (CLI orchestrator)
@@ -81,36 +87,65 @@ pyannote.ai: precision-2 +           │
          │                └───────┬─────────┘
    print chapters            clip window
    (exit)                         │
-                        captions.build_ass  [LOCAL]
+                          captions.build_ass [LOCAL]
                         (per-speaker karaoke .ass)
                                   │
-                        render.render  [LOCAL]
+                            render.render [LOCAL]
                         (9:16 reframe + burn captions)
                                   │
                               short.mp4
 ```
 
-## 📝 Quickstart
+`shorts.py` orchestrates a 3-step pipeline:
+1. get a speaker-labelled transcript using pyannote.ai
+2. choose what to clip or list chapters using Gemini
+3. cut and caption the video using ffmpeg
+
+**Project Layout**
+
+```
+.
+|-- .env.example
+|-- .gitignore
+|-- captions.py
+|-- chapters.py
+|-- highlight.py
+|-- pyannote_client.py
+|-- render.py
+|-- requirements.txt
+`-- shorts.py
+```
+
+## 📝 Reference Guide
 
 ### Pre-requisites
 
 - Python 3.11 or later
 - FFmpeg installed and on your `PATH`
 - A [pyannote.ai](https://pyannote.ai) account and API key
-- A Gemini API (you can use your choice of LLM)
+- A Gemini API key
 - Basic knowledge of Python
 
 ### Step 1: Setup a new project
 
-a. Create a new project.
+a. Create a new project and navigate into your project directory.
 
-b. Navigate into your project directory.
+```
+mkdir clippy-annote && cd clippy-annote && npm init -y
+```
 
-c. Install the dependencies in `requirements.txt`.
+b. Install the dependencies in `requirements.txt`.
 
 ```
 pip install -r requirements.txt
 ```
+
+`requirements.txt` installs three packages:
+* requests>=2.32
+* google-genai>=1.0
+* python-dotenv>=1.0
+
+`ffmpeg` is a system binary invoked via `subprocess`. The Python packages here are only for the API clients and environment loading.
 
 ### Step 2: Configure your API keys
 
@@ -121,16 +156,17 @@ GOOGLE_API_KEY=your_google_api_key_here
 ```
 
 We are using the precision-2 model for diarized transcripts which requires an API key from your Pyannote dashboard:
-- Navogate to your Pyannote dashboard
+- Navigate to your Pyannote dashboard
 - Go to API keys under `Manage` in left sidebar
 - Enter name > Click `+ Create`
+- Paste it inside your `.env` file
 
-> **Never commit `.env` to version control.** Add it to `.gitignore` immediately:
+> ⚠ **Never commit `.env` to version control.** Add it to `.gitignore` immediately:
 > ```bash
 > echo ".env" >> .gitignore
 > ```
 
-### Step 3: Write your `pyannote_client.py` file
+### Step 3: Write the transcription API client
 
 Create a new file in your project directory called `pyannote_client.py` and edit the file such that the contents are as follows:
 
@@ -163,7 +199,6 @@ def _headers() -> dict:
 
 def upload(path: str) -> str:
     """Upload a local audio file to pyannote.ai temporary storage (kept ~24h).
-
     Returns a media:// URL usable in a job request.
     """
     media_url = f"media://clippy-annote/{uuid.uuid4().hex}/{os.path.basename(path)}"
@@ -212,9 +247,62 @@ def wait(job_id: str, poll_every: float = 5, timeout: float = 3600, on_poll=None
 
 🧑‍🏫 **Understanding the key concepts in the code**
 
-`pyannote_client.py` handles three things in sequence: Upload, Submit job, Poll
+`pyannote_client.py` talks to pyannote.ai and handles three things in sequence: Upload, Submit job, Poll
 
-Upload the video to Pyannote platform
+a. Upload
+
+```python
+def upload(path: str) -> str:
+    media_url = f"media://clippy-annote/{uuid.uuid4().hex}/{os.path.basename(path)}"
+    resp = requests.post(f"{API}/media/input", json={"url": media_url}, headers=_headers())
+    resp.raise_for_status()
+    with open(path, "rb") as f:
+        put = requests.put(resp.json()["url"], data=f)
+    put.raise_for_status()
+    return media_url
+```
+
+The `upload()` function above first asks pyannote.ai to create a temporary storage slot and streams the file directly to that URL. Uploaded files are kept for approximately 24 hours.
+
+b. Submit a job
+
+```python
+def submit(media_url: str) -> str:
+    body = {
+        "url": media_url,
+        "model": DIARIZATION_MODEL,        # "precision-2"
+        "transcription": True,
+        "transcriptionConfig": {"model": TRANSCRIPTION_MODEL},  # faster-whisper-large-v3-turbo
+    }
+    resp = requests.post(f"{API}/diarize", json=body, headers=_headers())
+    return resp.json()["jobId"]
+```
+
+`precision-2` is pyannote.ai's hosted and commercial offering for high-accuracy requirements. Setting `"transcription": True` bundles word-level transcriptions using Whisper into the same job and gives you both in a single API response. The alternative `community-1` model requires a separate transcription call and align the outputs.
+
+c. Poll
+
+```python
+def wait(job_id: str, poll_every: float = 5, timeout: float = 3600, on_poll=None) -> dict:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        resp = requests.get(f"{API}/jobs/{job_id}", headers=_headers())
+        job = resp.json()
+        if job["status"] == "succeeded":
+            return job["output"]
+        if job["status"] in ("failed", "cancelled"):
+            raise PyannoteError(f"job {job_id} {job['status']}: {job.get('error', 'no details')}")
+        time.sleep(poll_every)
+    raise TimeoutError(...)
+```
+
+The output contains two keys used downstream:
+- `turnLevelTranscription` — one dict per speaker turn: `{speaker, start, end, text}`
+- `wordLevelTranscription` — one dict per word: `{speaker, start, end, text}`
+
+Turns are used for chapter and highlight selection (Gemini needs readable paragraphs). Words are used for caption timing (you need per-word timestamps to light up each word as it's spoken).
+
+> **Gotcha:** Diarization on a 1-hour video can take 5-15 minutes. The default `timeout=3600` is intentionally generous. Do not reduce it for long videos.
 
 ### Step 4: Extract the audio and render the shorts clip
 
@@ -269,9 +357,32 @@ def render(src: str, start: float, dur: float, ass: str, out: str) -> None:
 
 🧑‍🏫 **Understanding the key concepts in the code**
 
-### Step 5: Write your main script `shorts.py`
+This file has two functions:
+1. extract_audio() pulls a tiny 16 kHz mono mp3 for upload that is best suited for diarization jobs
+2. render() clips the chosen window, reframes landscape to vertical 9:16, and burns in the captions
 
-Create a new file in your project directory called `shorts.py` and edit the file such that the contents are as follows:
+Before the video can be diarized, its audio needs to be extracted and prepared.
+
+```python
+def extract_audio(src: str, out: str) -> None:
+    """16 kHz mono mp3: all pyannote needs, and small to upload."""
+    _run(["ffmpeg", "-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000",
+          "-c:a", "libmp3lame", "-q:a", "5", out])
+```
+
+What each flag does:
+- `-vn` drops the video stream entirely as pyannote only needs audio.
+- `-ac 1` converts to mono which is best suited for diarization
+- `-ar 16000` downsamples to 16 kHz. The Whisper model used for transcription was trained at this sample rate; going higher wastes bandwidth
+- `-q:a 5` is a VBR quality setting for mp3 that keeps the file small enough for fast uploads
+
+A 1-hour video typically compresses to 30-50 MB with these settings.
+
+> **Gotcha:** The `ass` filter path is embedded directly in the filter string as a literal file path. If the path contains spaces or special characters, FFmpeg will misparse it. The project writes the `.ass` file next to the output video (e.g., `short.ass` for `short.mp4`), keeping paths predictable.
+
+### Step 5: Write `shorts.py`, the main CLI orchestrator
+
+Create a new file in your project directory called `shorts.py` which will be your point of entry and edit the file such that the contents are as follows:
 
 ```py
 #!/usr/bin/env python3
@@ -395,6 +506,20 @@ if __name__ == "__main__":
 
 🧑‍🏫 **Understanding the key concepts in the code**
 
+transcribe() returns a cached transcript if one exists next to the video, otherwise it extracts audio, runs the pyannote job, and caches the result.
+
+`shorts.py` caches the transcript alongside the source file:
+
+```python
+cache = path + ".transcript.json"
+if os.path.exists(cache):
+    log("using cached transcript")
+    with open(cache) as f:
+        return json.load(f)
+```
+
+This is the most important quality-of-life feature in the tool. Transcription is the slowest and most expensive step. Once it's done, every subsequent run (trying different clip lengths, different topics, re-rendering) uses the cache instantly. Delete the generated `.transcript.json` file only if you want to re-transcribe from scratch.
+
 ### Step 6: Style your karaoke-style, colour-coded captions
 
 Create a new file in your project directory called `captions.py` and edit the file such that the contents are as follows:
@@ -488,6 +613,10 @@ def build_ass(words: list[dict]) -> str:
 
 🧑‍🏫 **Understanding the key concepts in the code**
 
+`captions.py` produces an `.ass` (Advanced SubStation Alpha) subtitle file, the format ffmpeg can burn directly into video with its `ass` filter.
+
+For the scope of this tutorial, we'll avoid diving deep into this part of the code for brevity.
+
 ### Step 7: Write the logic to list chapters based on topics in the video
 
 Create a new file in your project directory called `chapters.py` and edit the file such that the contents are as follows:
@@ -544,6 +673,19 @@ def make_chapters(turns: list[dict]) -> list[dict]:
 ```
 
 🧑‍🏫 **Understanding the key concepts in the code**
+
+```python
+PROMPT = """\
+Split it into chapters from the conversation. Each chapter is one topic or a question and answer 
+segment in case of an interview/Q&A.
+...
+Produce between 8 and 12 chapters total.
+"""
+```
+
+`chapters.py` sends the turn-level transcript to Gemini and asks it to divide the conversation into 8–12 chapters with timestamps.
+
+This is useful as an analysis step before generating a short to understand the shape of the conversation and then use `--topic` to target a specific clip section.
 
 ### Step 8: Write the Gemini clip-picker engine
 
@@ -660,6 +802,27 @@ def pick_clip(turns: list[dict], lo: int = 45, hi: int = 60, focus: str | None =
 ```
 
 🧑‍🏫 **Understanding the key concepts in the code**
+
+`highlight.py` uses Gemini 2.5 Flash to read the transcript and pick the best clip. The multi-speaker requirement is validated in Python after the model responds.
+
+```python
+def _speakers_in(turns: list[dict], start: float, end: float) -> set:
+    return {t["speaker"] for t in turns if t["end"] > start and t["start"] < end}
+```
+
+If the response contains only one speaker, the model will retry. If the retry fails, `_densest_exchange` is used as a deterministic fallback to find the window with the most speaker switches.
+
+The function also accepts an optional `focus` argument to steer the model toward a specific topic:
+
+```python
+FOCUS_TASK = (
+    'Find the {lo}-{hi} second window that best captures this specific topic or exchange:\n'
+    '  "{focus}"\n'
+    "Pick the part of the conversation that is actually about it and stay faithful to it."
+)
+```
+
+> **Gotcha:** Gemini is given the full transcript in one prompt. For very long videos (2+ hours), the transcript can approach or exceed the model's context window. If you see a `400` error from the Gemini API, the transcript is too long. You can work around this by using `--start` and `--end` to skip Gemini entirely and specify the window manually, or by truncating the transcript to the most relevant section.
 
 ### Testing your CLI tool
 
